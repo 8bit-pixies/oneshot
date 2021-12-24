@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "oneshot"
+version = "0.1.0"
+description = ""
+authors = ["CS <2498638+charliec443@users.noreply.github.com>"]
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.10"
+keras = "^2.7.0"
+annoy = "^1.17.0"
+tensorflow = "^2.7.0"
+ipython = "^7.30.1"
+tqdm = "^4.62.3"
+
+[tool.poetry.dev-dependencies]
+pytest = "^5.2"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
