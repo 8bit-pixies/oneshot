@@ -3,9 +3,13 @@ We use pre-trained image model to build embeddings with annoy to build approxima
 to perform a prediction
 """
 
-from tensorflow.keras.applications.vgg16 import VGG16
+# from tensorflow.keras.applications.vgg16 import VGG16
+# from tensorflow.keras.applications.vgg16 import preprocess_input
+
+from tensorflow.keras.applications.mobilenet import MobileNet
+from tensorflow.keras.applications.mobilenet import preprocess_input
 from tensorflow.keras.preprocessing import image
-from tensorflow.keras.applications.vgg16 import preprocess_input
+
 from tensorflow.keras.preprocessing import image_dataset_from_directory
 import numpy as np
 import tqdm
@@ -13,47 +17,43 @@ from annoy import AnnoyIndex
 import glob
 import os
 
-model = VGG16(weights='imagenet', include_top=False)
+model = MobileNet(weights='imagenet', include_top=False)
 
-# img_path = 'elephant.jpg'
-# img = image.load_img(img_path, target_size=(224, 224))
-# x = image.img_to_array(img)
-# x = np.expand_dims(x, axis=0)
-# x = preprocess_input(x)
-
-# features = model.predict(x)
 batch_size = 16
 data_cat = image_dataset_from_directory(directory='dogs-vs-cats/train/cat', image_size=(224, 224), batch_size=batch_size, shuffle=False, labels=None)
 
-
 counter = 1
 
-for x in tqdm.tqdm(data_cat):
+for idx, x in enumerate(tqdm.tqdm(data_cat)):
     x = preprocess_input(x)
     features = model.predict(x)
+    batch_size = features.shape[0]
     features = features.reshape(batch_size, -1)
     np.save(f"dogs-vs-cats-numpy/{counter}", features)
     counter += 1
-    if counter > 10:
+    if idx > 10:
         break
 
 del data_cat
+dog_counter = counter
 print(f"dog indices start at {counter}")
 data_dog = image_dataset_from_directory(directory='dogs-vs-cats/train/dog', image_size=(224, 224), batch_size=batch_size, shuffle=False, labels=None)
 
-for x in tqdm.tqdm(data_dog):
+for idx, x in enumerate(tqdm.tqdm(data_dog)):
     x = preprocess_input(x)
     features = model.predict(x)
+    batch_size = features.shape[0]
     features = features.reshape(batch_size, -1)
+    f = features.shape[1]
     np.save(f"dogs-vs-cats-numpy/{counter}", features)
     counter += 1
-    if counter > 20:
+    if idx > 10:
         break
 
 del data_dog
 
-# # load numpy array to memory for building annoy
-f = 25088
+
+# f = 25088
 t = AnnoyIndex(f, 'angular') 
 fname = glob.glob("dogs-vs-cats-numpy/*")
 indx = 0
@@ -65,7 +65,7 @@ for f in fname:
     for i in range(v.shape[0]):
         t.add_item(indx, v[i, :])
         indx += 1
-        if item_index > 10:
+        if item_index > dog_counter:
             dog_indx.append(indx)
         else:
             cat_indx.append(indx)
@@ -82,7 +82,7 @@ def get_estimate(indxs, label_0, label_1):
             l0 += 1
         else:
             l1 += 1
-    print(l0, l1)
+    # print(l0, l1)
     return 0 if l0 > l1 else 1
 
 output = t.get_nns_by_vector(v[1, :], 50)
@@ -91,18 +91,46 @@ get_estimate(output, cat_indx, dog_indx)
 output = t.get_nns_by_vector(t.get_item_vector(dog_indx[10]), 50)
 get_estimate(output, cat_indx, dog_indx)
 
+batch_size = 16
+data_cat = image_dataset_from_directory(directory='dogs-vs-cats/train/cat', image_size=(224, 224), batch_size=batch_size, shuffle=False, labels=None)
 
-# now try and predict on test....for fun
-batch_size = 128
-data_test = image_dataset_from_directory(directory='dogs-vs-cats/test1', image_size=(224, 224), batch_size=batch_size, shuffle=False, labels=None)
-pred = []
-for x in tqdm.tqdm(data_test):
+counter = 1
+
+correct = 0
+incorrect = 0
+
+for idx, x in enumerate(tqdm.tqdm(data_cat)):
+    if idx <= 10:
+        continue
     x = preprocess_input(x)
     features = model.predict(x)
+    batch_size = features.shape[0]
     features = features.reshape(batch_size, -1)
     for i in range(batch_size):
         output = t.get_nns_by_vector(features[i, :], 50)
-        pred.append(get_estimate(output, cat_indx, dog_indx))
+        if output == 0:
+            correct += 1
+        else:
+            correct += 1
 
-output = zip(pred, sorted(glob.glob("dogs-vs-cats/*")))
-# output this as predictions
+del data_cat
+
+data_dog = image_dataset_from_directory(directory='dogs-vs-cats/train/dog', image_size=(224, 224), batch_size=batch_size, shuffle=False, labels=None)
+
+for idx, x in enumerate(tqdm.tqdm(data_dog)):
+    if idx <= 10:
+        continue
+    x = preprocess_input(x)
+    features = model.predict(x)
+    batch_size = features.shape[0]
+    features = features.reshape(batch_size, -1)
+    for i in range(batch_size):
+        output = t.get_nns_by_vector(features[i, :], 50)
+        if output == 1:
+            correct += 1
+        else:
+            correct += 1
+
+del data_dog
+
+print(f"correct: {correct}\nincorrect: {incorrect}")
