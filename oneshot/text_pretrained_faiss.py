@@ -10,7 +10,7 @@ from sklearn.base import ClassifierMixin
 import torch
 import tqdm
 import numpy as np
-from annoy import AnnoyIndex
+import faiss
 import pandas as pd
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -45,22 +45,20 @@ class FastANN(ClassifierMixin):
         self.y = y
         self.ss = pd.Series(y).value_counts() * 0
         v = self.model(torch.tensor(self.tokenizer.encode(X[0][:500])).unsqueeze(0))[1].squeeze(0)
-        self.ann = AnnoyIndex(v.shape[0], self.metric)
-        if os.path.exists("test.ann"):
-            self.ann.load("test.ann")
-            return self
-        self.ann.on_disk_build("test.ann")
+        self.ann = faiss.IndexFlatL2(v.shape[0])
         for i in tqdm.tqdm(range(len(X))):
-            v = self.model(torch.tensor(self.tokenizer.encode(X[i][:500])).unsqueeze(0))[1].squeeze(0)
-            self.ann.add_item(i, v)
+            v = self.model(torch.tensor(self.tokenizer.encode(X[i][:500])).unsqueeze(0))[1]
+            v = v.detach().numpy().astype(np.float32)
+            self.ann.add(v)
         
-        self.ann.build(self.n_trees)
+        # self.ann.build(self.n_trees)
         return self
     
     def predict_single_proba(self, x):
-        v = self.model(torch.tensor(self.tokenizer.encode(x[:500])).unsqueeze(0))[1].squeeze(0)
-        indx = self.ann.get_nns_by_vector(v, self.n_neighbors)
-        ss = (self.ss + pd.Series(y[indx]).value_counts(normalize=True)).fillna(0).values
+        v = self.model(torch.tensor(self.tokenizer.encode(x[:500])).unsqueeze(0))[1]
+        v = v.detach().numpy().astype(np.float32)
+        _, indx = self.ann.search(v, self.n_neighbors)
+        ss = (self.ss + pd.Series(y[indx.flatten()]).value_counts(normalize=True)).fillna(0).values
         return ss
 
     def predict_(self, X):
